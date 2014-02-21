@@ -7,6 +7,9 @@ ascension numbers to CT numbers.
 from copy import deepcopy
 import csv
 
+import BeautifulSoup
+import requests
+
 EB_PROTEOMICS_FILE = '../data/EB_Proteomics.csv'
 
 def import_eb_proteomics_data(filename):
@@ -68,11 +71,33 @@ def process_eb_proteomics_data(data):
 
     return out
 
+
 def write_reduced_csv(filename, headers, data):
     with open(filename, 'wb') as f:
         f.write('{0}\n'.format(', '.join(headers)))
         for d in data:
             f.write('{0}\n'.format(', '.join(d)))
+
+
+def search_klee(ctl, first_seventy=True):
+    KLEE_URL = 'http://www.genome.jp/dbget-bin/www_bget?ctb:CTL0{0}'
+    webpage = BeautifulSoup.BeautifulSoup(
+        requests.get(
+            KLEE_URL.format(ctl)
+        ).text
+    )
+    results = webpage.findAll(name='nobr', text='AA seq')
+
+    if len(results) > 1:
+        raise Exception()
+
+    aa_seq_nobr = results[0]
+    seq = aa_seq_nobr.parent.parent.parent.td.text.split(' aa')[1]
+
+    if first_seventy:
+        seq = seq[:70]
+
+    return seq
 
 def import_data(filename):
     # Output
