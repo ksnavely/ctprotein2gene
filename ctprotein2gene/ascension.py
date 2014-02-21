@@ -8,6 +8,7 @@ from copy import deepcopy
 import csv
 
 import BeautifulSoup
+import json
 import requests
 
 EB_PROTEOMICS_FILE = '../data/EB_Proteomics.csv'
@@ -79,31 +80,41 @@ def write_reduced_csv(filename, headers, data):
             f.write('{0}\n'.format(', '.join(d)))
 
 
-def klee_dump():
-    ctls = range(1, 897)
+def klee_dump(password, max_ctl):
+    ctls = range(1, max_ctl + 1)
     bad_ctls = []
+
     for c in ctls:
+        # Attempt to fetch full sequence
+        seq = None
         try:
             seq = search_klee(c, first_seventy=False)
         except:
             bad_ctls.append(c)
             continue
 
+        print('Grabbed {ctl} {seq}...'.format(c, seq))
         doc = {
-            '_id': 'CTL00{ctl}'.format(ctl), # TODO proper str format
-            'ctl': 'CTL00{ctl}'.format(ctl), # TODO proper str format
-            'seq': '{seq}'.format(seq=seq), # TODO proper str format
+            '_id': 'CTL00%03d' % c,
+            'ctl': 'CTL00%03d' % c,
+            'seq': '{seq}'.format(seq=seq),
         }
 
         try:
             response = requests.post(
                 'https://ksnavely.cloudant.com/ctl_sequence',
-                auth=(username, password),
+                auth=('ksnavely', password),
+                data=json.dumps(doc),
                 headers='Content-Type: application/json'
             )
+            response.raise_for_status()
+            print('Saved {ctl}, resp: {resp}'.format(c, response.text))
         except:
             bad_ctls.append(c)
             continue
+
+    with open('bad_ctls.txt', 'a') as f:
+        f.write('\n'.join(bad_ctls))
 
 
 def search_klee(ctl, first_seventy=True):
@@ -122,8 +133,9 @@ def search_klee(ctl, first_seventy=True):
 
     if len(results) > 1:
         raise Exception('Results too long! len: {0}, resp: {2}'.format(
-            len(results),
-            response.text
+                len(results),
+                response.text
+            )
         )
 
     aa_seq_nobr = results[0]
