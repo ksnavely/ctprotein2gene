@@ -4,7 +4,39 @@ _ascension_
 This module contains functions for translating Ct 434Bu Uniprot protein
 ascension numbers to CT numbers.
 """
+from copy import deepcopy
 import csv
+
+EB_PROTEOMICS_FILE = '../data/EB_Proteomics.csv'
+
+def import_eb_proteomics_data(filename):
+    # Map column name to header index
+    headers = {}
+    data = []
+
+    # Open the input csv and pull out the fields we want
+    # Make a header and column for our translated CT number
+    with open(filename, "r") as csvfile:
+        reader = csv.reader(csvfile)
+
+        # Get the first row, the headers, and build the output headers
+        oheaders = reader.next()
+        headers = {
+            'CTL##': oheaders.index('CTL##'),
+            'Peptide Matches': oheaders.index('Peptide Matches'),
+            'Fold Change (RifR/GspE)': oheaders.index('Fold Change (RifR/GspE)'),
+            'P-value': oheaders.index('P-value')
+        }
+
+        # Grab the existing data we want 
+        for row in reader:
+            ctl = row[headers['CTL##']]
+            peptide_matches = row[headers['Peptide Matches']]
+            p_value = row[headers['P-value']]
+            fold_change = row[headers['Fold Change (RifR/GspE)']]
+            data.append([ctl, peptide_matches, fold_change, p_value])
+
+    return headers, data
 
 def import_data(filename):
     # Output
@@ -28,7 +60,7 @@ def import_data(filename):
             protein_name = row[1]
             fold_change = row[16]
             p_value = row[17]
-            data.extend([protein_name, fold_change, p_value])
+            data.append([protein_name, fold_change, p_value])
 
     return headers, data
 
@@ -43,7 +75,8 @@ def translate_data(headers, data):
       - 2 P-Value
     """
     # Extend the original headers
-    theaders = [].extend(headers).extend(
+    theaders = deepcopy(headers)
+    theaders.extend(
         [
             'Protein Prefix',
             'Protein Name',
@@ -53,18 +86,28 @@ def translate_data(headers, data):
     )
 
     # Parse and convert the description to the desired data
-    translated = [].extend(data)
-    for row in translated:
+    translated = []
+    for row in data:
         # Parse out the protein name and prefix
-        protein_desc = row[1]
-        prefix, name = parse_protein_name(protein_desc)
+        protein_desc = row[0]
+        try:
+            prefix, name = parse_protein_name(protein_desc)
+        except ParseError:
+            # Leave out mis-parses -- controls
+            continue
 
         # Use the name to find CTL, CT numbers
-        ctl = get_ctl_number(name)
-        ct = get_ct_number(ctl)
-        row.extend([prefix, name, ctl, ct])
+        ctl = None #get_ctl_number(name)
+        ct = None #get_ct_number(ctl)
+
+        translated.append(
+            row + [prefix, name, ctl, ct]
+        )
 
     return theaders, translated
+
+class ParseError(Exception):
+    pass
 
 def parse_protein_name(protein_desc):
     """
@@ -81,6 +124,12 @@ def parse_protein_name(protein_desc):
         (prefix, name)
     """
     protein_name = protein_desc.split(' ')[0]
+    # Some controls won't parse, no worries
+    if '|' not in protein_name:
+        msg = 'Misparse: {protein_desc}'.format(protein_desc=protein_desc)
+        print(msg)
+        raise ParseError(msg)
+
     prefix = protein_name.split('|')[0]
     name = protein_name.split('|')[1]
     return prefix, name
@@ -97,12 +146,30 @@ def get_ct_number(ctl):
     """
     pass
 
+def print_name_info(data):
+    """
+    Print name info for AGJ proteins
+    """
+    names = []
+    for row in data:
+        name = row[4]
+        if name.startswith('AGJ'):
+            names.append(row[4])
+
+    names.sort()
+    print("First AGJ protein: {first}".format(first=names[0]))
+    print("Last AGJ protein: {last}".format(last=names[-1]))
+    print("Non-AGJ proteins not considered.")
+
 
 if __name__ == "__main__":
-    # Extract the data of interest from the Excel->CSV dump
-    headers, data = import_data('../data/ComparativeProteomics.csv')
+#   # Extract the data of interest from the Excel->CSV dump
+#   headers, data = import_data('../data/ComparativeProteomics.csv')
 
-    # Get new headers and 2D list of orig data + protein prefix, protein name,
-    # ctl number, and ct number
-    headers, data = translate_data(headers, data)
+#   # Get new headers and 2D list of orig data + protein prefix, protein name,
+#   # ctl number, and ct number
+#   headers, data = translate_data(headers, data)
+#   print_name_info(data)
+#   import ipdb; ipdb.set_trace()
+    eb_headers, eb_data = import_eb_proteomics_data(EB_PROTEOMICS_FILE)
     import ipdb; ipdb.set_trace()
