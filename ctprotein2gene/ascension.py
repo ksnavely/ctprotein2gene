@@ -80,8 +80,8 @@ def write_reduced_csv(filename, headers, data):
             f.write('{0}\n'.format(', '.join(d)))
 
 
-def klee_dump(password, max_ctl):
-    ctls = range(1, max_ctl + 1)
+def klee_dump(password, start_ctl, max_ctl):
+    ctls = range(start_ctl, max_ctl + 1)
     bad_ctls = []
 
     for c in ctls:
@@ -89,40 +89,40 @@ def klee_dump(password, max_ctl):
         seq = None
         try:
             seq = search_klee(c, first_seventy=False)
-        except:
-            bad_ctls.append(c)
-            continue
+            print('Grabbed {ctl} {seq}...'.format(ctl=c, seq=seq))
 
-        print('Grabbed {ctl} {seq}...'.format(c, seq))
-        doc = {
-            '_id': 'CTL00%03d' % c,
-            'ctl': 'CTL00%03d' % c,
-            'seq': '{seq}'.format(seq=seq),
-        }
+            doc = {
+                '_id': 'CTL00%03d' % c,
+                'ctl': 'CTL00%03d' % c,
+                'seq': '{seq}'.format(seq=seq),
+            }
 
-        try:
             response = requests.post(
                 'https://ksnavely.cloudant.com/ctl_sequence',
                 auth=('ksnavely', password),
                 data=json.dumps(doc),
-                headers='Content-Type: application/json'
+                headers={'Content-Type': 'application/json'}
             )
             response.raise_for_status()
-            print('Saved {ctl}, resp: {resp}'.format(c, response.text))
-        except:
-            bad_ctls.append(c)
+            print('Saved {ctl}, resp: {resp}'.format(ctl=c, resp=response.text))
+
+        except Exception as ex:
+            bad_ctls.append((c, repr(ex)))
+            print('Exception caught: {ex}'.format(ex=ex))
             continue
 
     with open('bad_ctls.txt', 'a') as f:
-        f.write('\n'.join(bad_ctls))
+        for ctl, repr_ex in bad_ctls:
+            f.write('{0}, {1}\n'.format(ctl, repr_ex))
 
 
 def search_klee(ctl, first_seventy=True):
-    KLEE_URL = 'http://www.genome.jp/dbget-bin/www_bget?ctb:CTL0{0}'
+    KLEE_URL = 'http://www.genome.jp/dbget-bin/www_bget?ctb:CTL0%03d' % ctl
 
+    print('Fetching {url}'.format(url=KLEE_URL))
     response = requests.get(
-        KLEE_URL.format(ctl)
-    ).text
+        KLEE_URL
+    )
     response.raise_for_status()
 
     webpage = BeautifulSoup.BeautifulSoup(
@@ -130,16 +130,22 @@ def search_klee(ctl, first_seventy=True):
     )
 
     results = webpage.findAll(name='nobr', text='AA seq')
+    if not results:
+        raise Exception('No AA seq nobr found for {0}, resp: {1}'.format(ctl, response.text))
 
     if len(results) > 1:
-        raise Exception('Results too long! len: {0}, resp: {2}'.format(
+        raise Exception('Results too long! len: {0}, resp: {1}'.format(
                 len(results),
                 response.text
             )
         )
 
     aa_seq_nobr = results[0]
-    seq = aa_seq_nobr.parent.parent.parent.td.text.split(' aa')[1]
+    try:
+        seq = aa_seq_nobr.parent.parent.parent.td.text.split(' aa')[1]
+        print('Parsed seq {0}...'.format(seq[:10]))
+    except:
+        raise Exception('Unable to parse seq')
 
     if first_seventy:
         seq = seq[:70]

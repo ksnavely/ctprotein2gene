@@ -1,1 +1,7 @@
+venv/
+bad_ctls.txt
 data/*
+*.pyc
+*/*.pyc
+*.swp
+*/*.swp
