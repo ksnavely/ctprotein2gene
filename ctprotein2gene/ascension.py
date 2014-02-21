@@ -21,7 +21,16 @@ def import_eb_proteomics_data(filename):
 
         # Get the first row, the headers, and build the output headers
         oheaders = reader.next()
-        headers = {
+
+        # Order the same as the data construction
+        headers = [
+            'CTL##',
+            'Peptide Matches',
+            'Fold Change (RifR/GspE)',
+            'P-value'
+        ]
+
+        row_lookup = {
             'CTL##': oheaders.index('CTL##'),
             'Peptide Matches': oheaders.index('Peptide Matches'),
             'Fold Change (RifR/GspE)': oheaders.index('Fold Change (RifR/GspE)'),
@@ -30,13 +39,40 @@ def import_eb_proteomics_data(filename):
 
         # Grab the existing data we want 
         for row in reader:
-            ctl = row[headers['CTL##']]
-            peptide_matches = row[headers['Peptide Matches']]
-            p_value = row[headers['P-value']]
-            fold_change = row[headers['Fold Change (RifR/GspE)']]
+            ctl = row[row_lookup['CTL##']]
+            peptide_matches = row[row_lookup['Peptide Matches']]
+            p_value = row[row_lookup['P-value']]
+            fold_change = row[row_lookup['Fold Change (RifR/GspE)']]
             data.append([ctl, peptide_matches, fold_change, p_value])
 
     return headers, data
+
+
+def process_eb_proteomics_data(data):
+    thresholds = {
+        'Peptide Matches': lambda x: float(x) >= 2,
+        'Fold Change (RifR/GspE)': lambda x: abs(float(x)) >= 1.5,
+        'P-value': lambda x: float(x) <= 0.05
+    }
+    out = []
+
+    for d in data:
+        ctl, peptide_matches, fold_change, p_value = d
+        check_sum = sum([
+            thresholds['Peptide Matches'](peptide_matches),
+            thresholds['Fold Change (RifR/GspE)'](fold_change),
+            thresholds['P-value'](p_value)
+        ])
+        if check_sum >= 2:
+            out.append(d)
+
+    return out
+
+def write_reduced_csv(filename, headers, data):
+    with open(filename, 'wb') as f:
+        f.write('{0}\n'.format(', '.join(headers)))
+        for d in data:
+            f.write('{0}\n'.format(', '.join(d)))
 
 def import_data(filename):
     # Output
@@ -172,4 +208,6 @@ if __name__ == "__main__":
 #   print_name_info(data)
 #   import ipdb; ipdb.set_trace()
     eb_headers, eb_data = import_eb_proteomics_data(EB_PROTEOMICS_FILE)
+    reduced_eb_data = process_eb_proteomics_data(eb_data)
+    write_reduced_csv('../data/Reduced_EB_Proteomics.csv', eb_headers, reduced_eb_data)
     import ipdb; ipdb.set_trace()
