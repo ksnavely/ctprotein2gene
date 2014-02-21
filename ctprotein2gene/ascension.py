@@ -79,17 +79,52 @@ def write_reduced_csv(filename, headers, data):
             f.write('{0}\n'.format(', '.join(d)))
 
 
+def klee_dump():
+    ctls = range(1, 897)
+    bad_ctls = []
+    for c in ctls:
+        try:
+            seq = search_klee(c, first_seventy=False)
+        except:
+            bad_ctls.append(c)
+            continue
+
+        doc = {
+            '_id': 'CTL00{ctl}'.format(ctl), # TODO proper str format
+            'ctl': 'CTL00{ctl}'.format(ctl), # TODO proper str format
+            'seq': '{seq}'.format(seq=seq), # TODO proper str format
+        }
+
+        try:
+            response = requests.post(
+                'https://ksnavely.cloudant.com/ctl_sequence',
+                auth=(username, password),
+                headers='Content-Type: application/json'
+            )
+        except:
+            bad_ctls.append(c)
+            continue
+
+
 def search_klee(ctl, first_seventy=True):
     KLEE_URL = 'http://www.genome.jp/dbget-bin/www_bget?ctb:CTL0{0}'
+
+    response = requests.get(
+        KLEE_URL.format(ctl)
+    ).text
+    response.raise_for_status()
+
     webpage = BeautifulSoup.BeautifulSoup(
-        requests.get(
-            KLEE_URL.format(ctl)
-        ).text
+        response.text
     )
+
     results = webpage.findAll(name='nobr', text='AA seq')
 
     if len(results) > 1:
-        raise Exception()
+        raise Exception('Results too long! len: {0}, resp: {2}'.format(
+            len(results),
+            response.text
+        )
 
     aa_seq_nobr = results[0]
     seq = aa_seq_nobr.parent.parent.parent.td.text.split(' aa')[1]
